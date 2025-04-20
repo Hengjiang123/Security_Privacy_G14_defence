@@ -1,0 +1,30 @@
+<!-- templates/transactions.html -->
+{% extends "base.html" %}
+{% block content %}
+<h2>{{ user.username }}'s Transactions</h2>
+<p>Account No: {{ user.account_no }}</p>
+<table>
+  <tr>
+    <th>ID</th>
+    <th>Date</th>
+    <th>Details</th>
+    <th>CHQ.NO.</th>
+    <th>Value Date</th>
+    <th>Withdrawal</th>
+    <th>Deposit</th>
+    <th>Balance</th>
+  </tr>
+  {% for tx in transactions %}
+  <tr>
+    <td>{{ tx.id }}</td>
+    <td>{{ tx.date.strftime('%Y-%m-%d') if tx.date else '' }}</td>
+    <td>{{ tx.transaction_details }}</td>
+    <td>{{ tx.chq_no }}</td>
+    <td>{{ tx.value_date.strftime('%Y-%m-%d') if tx.value_date else '' }}</td>
+    <td>{{ tx.withdrawal_amt if tx.withdrawal_amt else '' }}</td>
+    <td>{{ tx.deposit_amt if tx.deposit_amt else '' }}</td>
+    <td>{{ tx.balance_amt if tx.balance_amt else '' }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}

@@ -1,0 +1,30 @@
+<!-- templates/account_details.html -->
+{% extends "base.html" %}
+{% block content %}
+<h2>Account Details</h2>
+<p><strong>Account Number:</strong> {{ account.account_no }}</p>
+<p><strong>Username:</strong> {{ account.username }}</p>
+<p><strong>Created:</strong> {{ account.created_at }}</p>
+
+<h3>Recent Transactions</h3>
+<table>
+  <tr>
+    <th>Date</th>
+    <th>Details</th>
+    <th>Withdrawal</th>
+    <th>Deposit</th>
+    <th>Balance</th>
+  </tr>
+  {% for tx in transactions %}
+  <tr>
+    <td>{{ tx.date.strftime('%Y-%m-%d') if tx.date else '' }}</td>
+    <td>{{ tx.transaction_details }}</td>
+    <td>{{ tx.withdrawal_amt if tx.withdrawal_amt else '' }}</td>
+    <td>{{ tx.deposit_amt if tx.deposit_amt else '' }}</td>
+    <td>{{ tx.balance_amt if tx.balance_amt else '' }}</td>
+  </tr>
+  {% endfor %}
+</table>
+
+<p><a href="{{ url_for('dashboard') }}">Back to Dashboard</a></p>
+{% endblock %}

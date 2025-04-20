@@ -1,0 +1,20 @@
+<!-- templates/admin/dashboard.html -->
+{% extends "base.html" %}
+{% block content %}
+<h2>Admin Dashboard</h2>
+<p>Welcome to the administrator control panel</p>
+
+<div class="admin-stats">
+    <h3>System Statistics</h3>
+    <ul>
+        <li>Total Users: {{ user_count }}</li>
+        <li>Total Transactions: {{ transaction_count }}</li>
+        <li>Total Deposits: ${{ "{:,.2f}".format(total_deposits) }}</li>
+        <li>Total Withdrawals: ${{ "{:,.2f}".format(total_withdrawals) }}</li>
+    </ul>
+</div>
+
+<div class="admin-links">
+    <a href="{{ url_for('admin_panel') }}">View Users</a>
+</div>
+{% endblock %}
