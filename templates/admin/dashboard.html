@@ -15,6 +15,21 @@
 </div>
 
 <div class="admin-links">
-    <a href="{{ url_for('admin_panel') }}">View Users</a>
+    <a href="{{ url_for('admin_panel') }}">View Users</a> |
+    <a href="{{ url_for('admin_ip_list') }}">View IP</a>
 </div>
+
+<hr>
+
+<div class="rate-limit-settings">
+    <h3>DDoS Rate Limit Settings</h3>
+    <p>Current limit: <strong>{{ current_limit }}</strong> requests / IP / minute</p>
+
+    <form method="POST" action="{{ url_for('set_rate_limit') }}">
+        <label for="rate_limit">New limit:</label>
+        <input type="number" id="rate_limit" name="rate_limit" min="1" max="10000" placeholder="Enter new limit" required>
+        <button type="submit">Update Limit</button>
+    </form>
+</div>
+
 {% endblock %}

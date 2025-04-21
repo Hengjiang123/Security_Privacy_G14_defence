@@ -1,4 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash
+from collections import deque
+import time, json
 from models import db, User, Transaction
 from passlib.hash import pbkdf2_sha256
 from datetime import datetime, timedelta
@@ -18,7 +20,54 @@ def create_app():
 
     return app
 
+IP_DEFENCE_FILE = 'ip_defence.json'
+
+def load_ip_settings():
+    try:
+        with open(IP_DEFENCE_FILE, 'r') as f:
+            data = json.load(f)
+            limit = int(data.get('rate_limit', 60))
+            blacklist = set(data.get('blacklist', []))
+            return limit, blacklist
+    except (FileNotFoundError, json.JSONDecodeError, ValueError):
+        return 60, set()
+
+def save_ip_settings(limit, blacklist):
+    with open(IP_DEFENCE_FILE, 'w') as f:
+        json.dump({'rate_limit': limit, 'blacklist': list(blacklist)}, f)
+
+# Load initial settings
+RATE_LIMIT_PER_MIN, BLACKLIST = load_ip_settings()
+ADMIN_WHITELIST = {'127.0.0.1', '192.168.1.69'}
+ip_requests = {}  # Dictionary to track requests per IP
+
 app = create_app()
+
+@app.before_request
+def rate_limiter():
+    ip = request.remote_addr or 'unknown'
+
+    if ip in ADMIN_WHITELIST:
+        return
+
+    # check if the IP is in the blacklist
+    if ip in BLACKLIST:
+        return "Your IP has been blocked due to too many requests.", 429
+
+    # record the request time
+    now = time.time()
+    dq = ip_requests.setdefault(ip, deque())
+    dq.append(now)
+
+    # remove requests older than 60 seconds
+    while dq and now - dq[0] > 60:
+        dq.popleft()
+
+    # check if the rate limit is exceeded
+    if len(dq) > RATE_LIMIT_PER_MIN:
+        BLACKLIST.add(ip)
+        save_ip_settings(RATE_LIMIT_PER_MIN, BLACKLIST)
+        return "Too many requests from your IP. You are temporarily blocked.", 429
 
 @app.route('/')
 def index():
@@ -201,6 +250,49 @@ def unlock_account(username):
 
     return redirect(url_for('admin_panel'))
 
+@app.route('/admin/ip_list')
+def admin_ip_list():
+    if 'user_id' not in session:
+        flash("Please log in first.")
+        return redirect(url_for('login'))
+    return render_template('admin/ip_list.html',
+                           blacklisted_ips=sorted(BLACKLIST),
+                           current_limit=RATE_LIMIT_PER_MIN)
+
+@app.route('/admin/unblock_ip/<ip>', methods=['POST'])
+def unblock_ip(ip):
+    if 'user_id' not in session:
+        flash("Please log in first.")
+        return redirect(url_for('login'))
+
+    if ip in BLACKLIST:
+        BLACKLIST.remove(ip)
+        ip_requests.pop(ip, None)
+        save_ip_settings(RATE_LIMIT_PER_MIN, BLACKLIST)
+        flash(f"IP {ip} has been unblocked.")
+
+    return redirect(url_for('admin_ip_list'))
+
+@app.route('/admin/set_rate_limit', methods=['POST'])
+def set_rate_limit():
+    if 'user_id' not in session:
+        flash("Please log in first.")
+        return redirect(url_for('login'))
+
+    try:
+        new_limit = int(request.form.get('rate_limit', '').strip())
+        if new_limit < 1 or new_limit > 10000:
+            raise ValueError
+        global RATE_LIMIT_PER_MIN
+        RATE_LIMIT_PER_MIN = new_limit
+        save_ip_settings(RATE_LIMIT_PER_MIN, BLACKLIST)
+        flash(f"Rate limit updated to {RATE_LIMIT_PER_MIN} requests/min.")
+    except ValueError:
+        flash("Please enter a valid number between 1 and 10000.")
+
+    return redirect(url_for('admin_dashboard'))
+
+
 @app.route('/admin/dashboard')
 def admin_dashboard():
     # VULNERABLE: No proper authorization check
@@ -223,9 +315,8 @@ def admin_dashboard():
                            user_count=user_count,
                            transaction_count=transaction_count,
                            total_deposits=total_deposits,
-                           total_withdrawals=total_withdrawals)
-
-
+                           total_withdrawals=total_withdrawals,
+                           current_limit=RATE_LIMIT_PER_MIN)
 
 @app.route('/account/<int:account_id>')
 def account_details(account_id):

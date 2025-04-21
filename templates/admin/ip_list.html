@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Blacklisted IP Addresses</h2>
+
+{% if blacklisted_ips %}
+<table>
+  <tr>
+    <th>IP Address</th>
+    <th>Action</th>
+  </tr>
+  {% for ip in blacklisted_ips %}
+  <tr>
+    <td>{{ ip }}</td>
+    <td>
+      <form method="POST" action="{{ url_for('unblock_ip', ip=ip) }}">
+        <button type="submit">Unblock</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No IPs are currently blacklisted.</p>
+{% endif %}
+
+<p><a href="{{ url_for('admin_dashboard') }}">Back to Admin Dashboard</a></p>
+{% endblock %}
