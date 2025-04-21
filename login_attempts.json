@@ -1,1 +1,1 @@
-{"user_409000611074": {"count": 0, "lockout_until": null}}
+{"user_409000611074": {"count": 0, "lockout_until": null}, "\"><script>alert('XSS!')</script>": {"count": 0, "lockout_until": null}}
