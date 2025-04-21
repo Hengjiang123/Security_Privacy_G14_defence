@@ -53,6 +53,24 @@ def register():
     return render_template('register.html')
 
 
+from datetime import datetime, timedelta
+import json
+
+
+
+def get_login_attempts():
+    try:
+        with open('login_attempts.json', 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def save_login_attempts(attempts):
+    with open('login_attempts.json', 'w') as f:
+        json.dump(attempts, f)
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     # Check if this is part of the attack demo
@@ -62,26 +80,25 @@ def login():
         username = request.form.get('username')
         password = request.form.get('password')
 
-        # Initialize login attempts tracking in session if it doesn't exist
-        if 'login_attempts' not in session:
-            session['login_attempts'] = {}
+        # Get login attempts from file
+        login_attempts = get_login_attempts()
 
         # Initialize attempts for this username if it doesn't exist
-        if username not in session['login_attempts']:
-            session['login_attempts'][username] = {
+        if username not in login_attempts:
+            login_attempts[username] = {
                 'count': 0,
                 'lockout_until': None
             }
 
         # Check if account is locked
-        user_attempts = session['login_attempts'][username]
-        if user_attempts.get('lockout_until') and user_attempts['lockout_until'] > datetime.utcnow().timestamp():
+        user_attempts = login_attempts[username]
+        if user_attempts.get('lockout_until') and datetime.utcnow().timestamp() < user_attempts['lockout_until']:
             remaining_minutes = int((user_attempts['lockout_until'] - datetime.utcnow().timestamp()) / 60)
             flash(f"This account is locked. Please try again in {remaining_minutes} minutes.")
             return render_template('login.html')
 
         # Reset lockout if it has expired
-        if user_attempts.get('lockout_until') and user_attempts['lockout_until'] <= datetime.utcnow().timestamp():
+        if user_attempts.get('lockout_until') and datetime.utcnow().timestamp() >= user_attempts['lockout_until']:
             user_attempts['count'] = 0
             user_attempts['lockout_until'] = None
 
@@ -91,6 +108,7 @@ def login():
             # Successful login - reset attempts
             user_attempts['count'] = 0
             user_attempts['lockout_until'] = None
+            save_login_attempts(login_attempts)
 
             session['user_id'] = user.id
 
@@ -121,10 +139,10 @@ def login():
                 attempts_left = 5 - user_attempts['count']
                 flash(f"Invalid username or password. {attempts_left} attempts remaining before lockout.")
 
+            save_login_attempts(login_attempts)
             return redirect(url_for('login', attack_redirect=attack_redirect))
 
     return render_template('login.html')
-
 
 @app.route('/logout')
 def logout():
@@ -159,24 +177,28 @@ def admin_panel():
     all_users = User.query.all()
 
     # Check locked accounts
+    login_attempts = get_login_attempts()
     locked_accounts = {}
-    if 'login_attempts' in session:
-        for user in all_users:
-            if user.username in session['login_attempts']:
-                lockout_until = session['login_attempts'][user.username].get('lockout_until')
-                locked_accounts[user.username] = (lockout_until and lockout_until > datetime.utcnow().timestamp())
+
+    for user in all_users:
+        if user.username in login_attempts:
+            lockout_until = login_attempts[user.username].get('lockout_until')
+            locked_accounts[user.username] = (lockout_until and datetime.utcnow().timestamp() < lockout_until)
 
     return render_template('admin_panel.html', users=all_users, locked_accounts=locked_accounts)
 
-
 @app.route('/admin/unlock_account/<username>', methods=['POST'])
 def unlock_account(username):
-    if 'login_attempts' in session and username in session['login_attempts']:
-        session['login_attempts'][username] = {
+    login_attempts = get_login_attempts()
+
+    if username in login_attempts:
+        login_attempts[username] = {
             'count': 0,
             'lockout_until': None
         }
+        save_login_attempts(login_attempts)
         flash(f"Account for {username} has been unlocked.")
+
     return redirect(url_for('admin_panel'))
 
 @app.route('/admin/dashboard')

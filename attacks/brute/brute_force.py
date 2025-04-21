@@ -5,14 +5,14 @@ import time
 def try_login(username, password):
     """Attempt to login with given credentials"""
     session = requests.Session()
-    response = session.get("http://127.0.0.1:5000/login")
+    response = session.get("http://127.0.0.1:8080/login")
 
     payload = {
         'username': username,
         'password': password
     }
 
-    response = session.post("http://127.0.0.1:5000/login", data=payload)
+    response = session.post("http://127.0.0.1:8080/login", data=payload)
     return "Logged in successfully" in response.text
 
 
@@ -98,7 +98,7 @@ if __name__ == "__main__":
     ]
 
     # Load passwords from the most common password txt file
-    password_file = "/Users/in7izmi/PycharmProjects/SecurityTest/common_password_list.txt"  # Change this to your password file path
+    password_file = "/Users/in7izmi/PycharmProjects/Security_Privacy_G14_defence/attacks/brute/common_password_listss"  # Change this to your password file path
     passwords = load_passwords_from_file(password_file)
 
     # If no passwords were loaded we use default
