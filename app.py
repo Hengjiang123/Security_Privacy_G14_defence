@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 from models import db, User, Transaction
 from passlib.hash import pbkdf2_sha256
+from datetime import datetime, timedelta
 from config import (
     SQLALCHEMY_DATABASE_URI,
     SQLALCHEMY_TRACK_MODIFICATIONS,
@@ -51,6 +52,7 @@ def register():
 
     return render_template('register.html')
 
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     # Check if this is part of the attack demo
@@ -60,15 +62,41 @@ def login():
         username = request.form.get('username')
         password = request.form.get('password')
 
+        # Initialize login attempts tracking in session if it doesn't exist
+        if 'login_attempts' not in session:
+            session['login_attempts'] = {}
+
+        # Initialize attempts for this username if it doesn't exist
+        if username not in session['login_attempts']:
+            session['login_attempts'][username] = {
+                'count': 0,
+                'lockout_until': None
+            }
+
+        # Check if account is locked
+        user_attempts = session['login_attempts'][username]
+        if user_attempts.get('lockout_until') and user_attempts['lockout_until'] > datetime.utcnow().timestamp():
+            remaining_minutes = int((user_attempts['lockout_until'] - datetime.utcnow().timestamp()) / 60)
+            flash(f"This account is locked. Please try again in {remaining_minutes} minutes.")
+            return render_template('login.html')
+
+        # Reset lockout if it has expired
+        if user_attempts.get('lockout_until') and user_attempts['lockout_until'] <= datetime.utcnow().timestamp():
+            user_attempts['count'] = 0
+            user_attempts['lockout_until'] = None
+
         user = User.query.filter_by(username=username).first()
+
         if user and pbkdf2_sha256.verify(password, user.password_hash):
-            # Log the user in
+            # Successful login - reset attempts
+            user_attempts['count'] = 0
+            user_attempts['lockout_until'] = None
+
             session['user_id'] = user.id
 
-            # If this is part of the attack demo, redirect to the transfer page
+            # Handle attack demo redirect
             if attack_redirect:
                 flash("Logged in successfully! Redirecting to security verification...")
-                # Use a JavaScript redirect to make it more visible
                 return """
                 <script>
                     alert("ATTACK DEMO: After login, redirecting to malicious transfer page");
@@ -79,14 +107,24 @@ def login():
                 flash("Logged in successfully!")
                 return redirect(url_for('dashboard'))
         else:
-            flash("Invalid username or password.")
-            # Pass along the attack parameter if it was present
-            if attack_redirect:
-                return redirect(url_for('login', attack_redirect='true'))
+            # Failed login - increment attempts
+            user_attempts['count'] += 1
+
+            # If reached max attempts, lock the account
+            if user_attempts['count'] >= 5:
+                # Lock for 15 minutes
+                lockout_time = datetime.utcnow().timestamp() + (15 * 60)
+                user_attempts['lockout_until'] = lockout_time
+                flash(
+                    "This account has been temporarily locked due to too many failed login attempts. Please try again in 15 minutes.")
             else:
-                return redirect(url_for('login'))
+                attempts_left = 5 - user_attempts['count']
+                flash(f"Invalid username or password. {attempts_left} attempts remaining before lockout.")
+
+            return redirect(url_for('login', attack_redirect=attack_redirect))
 
     return render_template('login.html')
+
 
 @app.route('/logout')
 def logout():
@@ -117,13 +155,29 @@ def transactions():
 
 @app.route('/admin')
 def admin_panel():
-    # VULNERABLE: Missing authentication check
-    # Should check if user is logged in AND is an admin
-
     # Get all users in the system
     all_users = User.query.all()
-    return render_template('admin_panel.html', users=all_users)
 
+    # Check locked accounts
+    locked_accounts = {}
+    if 'login_attempts' in session:
+        for user in all_users:
+            if user.username in session['login_attempts']:
+                lockout_until = session['login_attempts'][user.username].get('lockout_until')
+                locked_accounts[user.username] = (lockout_until and lockout_until > datetime.utcnow().timestamp())
+
+    return render_template('admin_panel.html', users=all_users, locked_accounts=locked_accounts)
+
+
+@app.route('/admin/unlock_account/<username>', methods=['POST'])
+def unlock_account(username):
+    if 'login_attempts' in session and username in session['login_attempts']:
+        session['login_attempts'][username] = {
+            'count': 0,
+            'lockout_until': None
+        }
+        flash(f"Account for {username} has been unlocked.")
+    return redirect(url_for('admin_panel'))
 
 @app.route('/admin/dashboard')
 def admin_dashboard():

@@ -13,6 +13,8 @@
     <th>Username</th>
     <th>Created</th>
     <th>Password Hash</th>
+    <th>Status</th>
+    <th>Actions</th>
   </tr>
   {% for user in users %}
   <tr>
@@ -21,6 +23,20 @@
     <td>{{ user.username }}</td>
     <td>{{ user.created_at }}</td>
     <td>{{ user.password_hash }}</td>
+    <td>
+      {% if locked_accounts and locked_accounts.get(user.username) %}
+        <span style="color: red; font-weight: bold;">LOCKED</span>
+      {% else %}
+        <span style="color: green;">ACTIVE</span>
+      {% endif %}
+    </td>
+    <td>
+      {% if locked_accounts and locked_accounts.get(user.username) %}
+        <form method="POST" action="{{ url_for('unlock_account', username=user.username) }}">
+          <button type="submit">Unlock Account</button>
+        </form>
+      {% endif %}
+    </td>
   </tr>
   {% endfor %}
 </table>
