@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Two‑Factor Verification</h2>
+<p>Please enter the 6‑digit code from your authenticator app.</p>
+<form method="POST">
+  <input type="text" name="token" placeholder="123456" maxlength="6" required>
+  <button type="submit">Verify</button>
+</form>
+{% endblock %}

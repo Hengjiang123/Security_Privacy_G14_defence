@@ -13,6 +13,7 @@ class User(db.Model):
     account_no = db.Column(db.String(50), unique=True, nullable=False)
     username = db.Column(db.String(64), unique=True, nullable=True)
     password_hash = db.Column(db.String(128), nullable=False)
+    totp_secret = db.Column(db.String(32), nullable=True)
 
     # here can be other fields like email, phone number, etc.
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

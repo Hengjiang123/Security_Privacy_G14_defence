@@ -4,6 +4,7 @@ import time, json
 from models import db, User, Transaction
 from passlib.hash import pbkdf2_sha256
 from datetime import datetime, timedelta
+import pyotp, qrcode, base64, io
 from config import (
     SQLALCHEMY_DATABASE_URI,
     SQLALCHEMY_TRACK_MODIFICATIONS,
@@ -97,18 +98,71 @@ def register():
 
         password_hash = pbkdf2_sha256.hash(password)
 
+        enable_2fa = request.form.get('enable_2fa') == 'on'
+        totp_secret = pyotp.random_base32() if enable_2fa else None
+
         new_user = User(
             account_no=account_no,
             username=username,
-            password_hash=password_hash
+            password_hash=password_hash,
+            totp_secret=totp_secret
         )
         db.session.add(new_user)
         db.session.commit()
+
+        if enable_2fa:
+            # LET USER SETUP 2FA
+            session['pre_2fa_user_id'] = new_user.id
+            return redirect(url_for('setup_2fa', user_id=new_user.id))
 
         flash("Registration successful! You can now log in.")
         return redirect(url_for('login'))
 
     return render_template('register.html')
+
+@app.route('/setup-2fa/<int:user_id>')
+def setup_2fa(user_id):
+    user = User.query.get_or_404(user_id)
+    if not user.totp_secret:
+        flash("2FA is not enabled for this user.")
+        return redirect(url_for('login'))
+
+    totp = pyotp.TOTP(user.totp_secret)
+    uri = totp.provisioning_uri(name=user.username, issuer_name="DigitalBank")
+    img = qrcode.make(uri)
+
+    filepath = f"static/qr.png"
+    img.save(filepath)
+
+    return render_template('setup_2fa.html', qr_path=url_for('static', filename=f"qr.png"))
+
+@app.route('/verify-2fa', methods=['GET', 'POST'])
+def verify_2fa():
+    if 'pre_2fa_user_id' not in session:
+        return redirect(url_for('login'))
+
+    user = User.query.get(session['pre_2fa_user_id'])
+    totp = pyotp.TOTP(user.totp_secret)
+
+    if request.method == 'POST':
+        token = request.form.get('token')
+        if totp.verify(token, valid_window=1):
+            session.pop('pre_2fa_user_id')
+            session['user_id'] = user.id
+            attack_redirect = session.pop('attack_redirect', False)
+
+            flash("2FA successful! Logged in.")
+            if attack_redirect:
+                return """
+                <script>
+                    alert("ATTACK DEMO: After 2FA, redirecting to malicious transfer page");
+                    window.location.href = "/transfer?to_account=8675309&amount=999.99&description=Security%20Verification&auto_confirm=true";
+                </script>
+                """
+            return redirect(url_for('dashboard'))
+        else:
+            flash("Invalid code – try again.")
+    return render_template('verify_2fa.html')
 
 
 from datetime import datetime, timedelta
@@ -163,10 +217,11 @@ def login():
         user = User.query.filter_by(username=username).first()
 
         if user and pbkdf2_sha256.verify(password, user.password_hash):
-            # Successful login - reset attempts
-            user_attempts['count'] = 0
-            user_attempts['lockout_until'] = None
-            save_login_attempts(login_attempts)
+            if user.totp_secret:                          # ← Use 2FA
+                session['pre_2fa_user_id'] = user.id
+                session['attack_redirect'] = attack_redirect
+                flash("Password correct – please complete 2FA.")
+                return redirect(url_for('verify_2fa'))
 
             session['user_id'] = user.id
 
@@ -256,6 +311,27 @@ def unlock_account(username):
         }
         save_login_attempts(login_attempts)
         flash(f"Account for {username} has been unlocked.")
+
+    return redirect(url_for('admin_panel'))
+
+@app.route('/admin/delete_user/<int:user_id>', methods=['POST'])
+def delete_user(user_id):
+    if 'user_id' not in session:
+        flash("Please log in first.")
+        return redirect(url_for('login'))
+
+    user = User.query.get(user_id)
+    if not user:
+        flash("User not found.")
+        return redirect(url_for('admin_panel'))
+
+    try:
+        db.session.delete(user)
+        db.session.commit()
+        flash(f"User '{user.username}' and their transactions have been deleted.")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error deleting user: {str(e)}")
 
     return redirect(url_for('admin_panel'))
 

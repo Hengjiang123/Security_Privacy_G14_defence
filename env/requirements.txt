@@ -7,3 +7,5 @@ numpy
 ipykernel
 requests
 beautifulsoup4
+pyotp 
+qrcode[pil]
