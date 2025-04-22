@@ -68,6 +68,15 @@ def rate_limiter():
         BLACKLIST.add(ip)
         save_ip_settings(RATE_LIMIT_PER_MIN, BLACKLIST)
         return "Too many requests from your IP. You are temporarily blocked.", 429
+    
+@app.after_request
+def set_security_headers(response):
+    response.headers['Server'] = 'SecureBank'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Content-Security-Policy'] = "default-src 'self'"
+    return response   
 
 @app.route('/')
 def index():
